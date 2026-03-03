@@ -1,0 +1,1211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flujo de Datos — Sistema Laravel</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Fraunces:wght@700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #07080A;
+    --surface: #0F1115;
+    --border: #1C1E24;
+    --text: #D8DCE8;
+    --muted: #4A4F60;
+    --red: #FF4433;
+    --amber: #FFAA00;
+    --cyan: #00D4FF;
+    --green: #00E87A;
+    --purple: #A855F7;
+    --pink: #FF6EB4;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 100vh;
+  }
+
+  /* Noise texture overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 999;
+    opacity: 0.4;
+  }
+
+  .canvas {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 56px 40px 80px;
+    position: relative;
+  }
+
+  /* HEADER */
+  .masthead {
+    margin-bottom: 72px;
+  }
+
+  .eyebrow {
+    font-size: 10px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .eyebrow::before {
+    content: '';
+    width: 28px;
+    height: 1px;
+    background: var(--cyan);
+  }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: clamp(44px, 6vw, 72px);
+    font-weight: 900;
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    color: #fff;
+  }
+
+  h1 em {
+    font-style: normal;
+    color: var(--cyan);
+    position: relative;
+  }
+
+  .subtitle {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    max-width: 480px;
+    line-height: 1.7;
+  }
+
+  /* LAYER LABELS */
+  .layer-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .layer-label span {
+    display: inline-block;
+    width: 20px;
+    height: 1px;
+    background: var(--muted);
+  }
+
+  /* MAIN FLOW */
+  .flow-wrapper {
+    position: relative;
+    margin-bottom: 64px;
+  }
+
+  /* VERTICAL SPINE */
+  .spine {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: linear-gradient(to bottom, transparent, var(--border) 5%, var(--border) 95%, transparent);
+    transform: translateX(-50%);
+    z-index: 0;
+  }
+
+  /* FLOW ROW */
+  .flow-row {
+    display: grid;
+    grid-template-columns: 1fr 60px 1fr;
+    align-items: center;
+    margin-bottom: 8px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* LEFT NODE */
+  .node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    position: relative;
+    transition: border-color 0.2s;
+  }
+
+  .node:hover { border-color: rgba(255,255,255,0.15); }
+
+  .node-tag {
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    opacity: 0.7;
+  }
+
+  .node-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+    letter-spacing: -0.01em;
+  }
+
+  .node-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .node-badge {
+    position: absolute;
+    top: -1px;
+    right: 14px;
+    font-size: 8px;
+    padding: 3px 8px;
+    border-radius: 0 0 6px 6px;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+
+  /* CENTER ARROW */
+  .arrow-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    position: relative;
+  }
+
+  .arrow-circle {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    position: relative;
+    z-index: 2;
+  }
+
+  .arrow-label {
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    line-height: 1.3;
+    max-width: 56px;
+  }
+
+  /* CONNECTOR LINES BETWEEN ROWS */
+  .connector {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 40px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .connector-line {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .c-dot {
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+
+  .c-arrow {
+    font-size: 16px;
+    line-height: 1;
+  }
+
+  /* DATA PACKET */
+  .data-packet {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 10px;
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+
+  .data-packet .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* SECTION: FULL WIDTH LAYER */
+  .full-layer {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px 28px;
+    margin-bottom: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .full-layer::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    border-radius: 12px 0 0 12px;
+  }
+
+  .full-layer-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .full-layer-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+
+  .mini-card {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px;
+  }
+
+  .mini-card-title {
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .mini-card-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* FULL FLOW DIAGRAM */
+  .diagram {
+    position: relative;
+    margin-bottom: 64px;
+  }
+
+  /* HORIZONTAL FLOW */
+  .h-flow {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    margin-bottom: 48px;
+  }
+
+  .h-node {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 14px;
+    position: relative;
+    text-align: center;
+  }
+
+  .h-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    flex-shrink: 0;
+    color: var(--muted);
+    font-size: 12px;
+    position: relative;
+  }
+
+  .h-arrow::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    top: 50%;
+    height: 1px;
+    background: var(--border);
+    z-index: 0;
+  }
+
+  .h-arrow span {
+    position: relative;
+    z-index: 1;
+    background: var(--bg);
+    padding: 2px 2px;
+    font-size: 14px;
+  }
+
+  .h-node-icon {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+
+  .h-node-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+    line-height: 1.3;
+  }
+
+  .h-node-sub {
+    font-size: 9px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* BIG FLOW DIAGRAM */
+  .big-flow {
+    position: relative;
+  }
+
+  /* ROW GROUPS */
+  .flow-group {
+    margin-bottom: 6px;
+  }
+
+  .group-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+    padding-left: 4px;
+    border-left: 2px solid var(--muted);
+    padding-left: 8px;
+  }
+
+  /* TIMELINE FLOW — full diagram */
+  .timeline {
+    position: relative;
+    padding-left: 60px;
+    margin-bottom: 64px;
+  }
+
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 20px;
+    top: 20px;
+    bottom: 20px;
+    width: 1px;
+    background: linear-gradient(to bottom, var(--cyan), var(--purple));
+  }
+
+  .tl-item {
+    position: relative;
+    margin-bottom: 6px;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .tl-dot {
+    position: absolute;
+    left: -48px;
+    top: 18px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 2px solid;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-weight: 700;
+    transform: translateX(-5px);
+  }
+
+  .tl-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .tl-icon {
+    font-size: 22px;
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .tl-body {}
+
+  .tl-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 3px;
+    letter-spacing: -0.01em;
+  }
+
+  .tl-detail {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .tl-tech {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+
+  .tech-chip {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+  }
+
+  .tl-connector {
+    height: 16px;
+    display: flex;
+    align-items: center;
+    padding-left: 20px;
+    margin: -3px 0;
+  }
+
+  .tl-connector-line {
+    width: 1px;
+    height: 16px;
+    background: var(--border);
+    margin-left: 1px;
+  }
+
+  /* TWO FLOWS SIDE BY SIDE */
+  .dual-flow {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 64px;
+  }
+
+  .flow-col {
+    position: relative;
+  }
+
+  .flow-col-header {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .flow-col-header .badge {
+    font-size: 9px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    letter-spacing: 0.1em;
+    font-weight: 700;
+  }
+
+  .mini-flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    position: relative;
+  }
+
+  .mini-flow::before {
+    content: '';
+    position: absolute;
+    left: 15px;
+    top: 20px;
+    bottom: 20px;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .mf-step {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 12px;
+    align-items: flex-start;
+    margin-bottom: 4px;
+  }
+
+  .mf-num {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    background: var(--bg);
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+  }
+
+  .mf-content {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-top: 2px;
+  }
+
+  .mf-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+
+  .mf-desc {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .mf-connector {
+    grid-column: 1;
+    height: 12px;
+    display: flex;
+    justify-content: center;
+  }
+
+  /* DATA TABLES */
+  .db-flow {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    margin-bottom: 64px;
+    position: relative;
+  }
+
+  .db-flow::before {
+    content: '';
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    top: 50%;
+    height: 1px;
+    background: linear-gradient(to right, transparent, var(--border), var(--border), transparent);
+    z-index: 0;
+  }
+
+  .db-node {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    z-index: 1;
+  }
+
+  .db-node-head {
+    padding: 8px 10px;
+    font-size: 10px;
+    font-weight: 700;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .db-node-head .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .db-node-body {
+    padding: 8px 10px;
+  }
+
+  .db-field {
+    font-size: 9px;
+    color: var(--muted);
+    padding: 2px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    display: flex;
+    gap: 4px;
+    align-items: center;
+  }
+
+  .db-field:last-child { border: none; }
+  .db-field .pk { color: var(--amber); font-size: 8px; }
+  .db-field .fk { color: var(--cyan); font-size: 8px; }
+
+  /* BROADCAST section */
+  .broadcast-diagram {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 24px;
+    align-items: center;
+    margin-bottom: 64px;
+  }
+
+  .broadcast-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .broadcast-hub {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(0,212,255,0.08);
+    border: 2px solid rgba(0,212,255,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    position: relative;
+  }
+
+  .broadcast-hub::before, .broadcast-hub::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(0,212,255,0.15);
+    animation: ripple 2.5s ease-out infinite;
+  }
+
+  .broadcast-hub::before { width: 110px; height: 110px; animation-delay: 0s; }
+  .broadcast-hub::after { width: 140px; height: 140px; animation-delay: 0.8s; }
+
+  @keyframes ripple {
+    0% { opacity: 1; transform: scale(0.8); }
+    100% { opacity: 0; transform: scale(1.2); }
+  }
+
+  .broadcast-label {
+    font-size: 10px;
+    color: var(--cyan);
+    letter-spacing: 0.1em;
+    text-align: center;
+  }
+
+  .broadcast-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .broadcast-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .broadcast-item .icon { font-size: 18px; flex-shrink: 0; }
+
+  .broadcast-item .title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+
+  .broadcast-item .sub {
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .broadcast-arrow {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .b-arrow {
+    font-size: 20px;
+    color: var(--muted);
+  }
+
+  /* FOOTER */
+  .footer {
+    border-top: 1px solid var(--border);
+    padding-top: 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .footer-text {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+
+  .legend {
+    display: flex;
+    gap: 16px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .legend-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+
+  /* ANIMATIONS */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .canvas > * {
+    animation: fadeIn 0.5s ease both;
+  }
+
+  .canvas > *:nth-child(1) { animation-delay: 0.05s; }
+  .canvas > *:nth-child(2) { animation-delay: 0.1s; }
+  .canvas > *:nth-child(3) { animation-delay: 0.15s; }
+  .canvas > *:nth-child(4) { animation-delay: 0.2s; }
+  .canvas > *:nth-child(5) { animation-delay: 0.25s; }
+  .canvas > *:nth-child(6) { animation-delay: 0.3s; }
+  .canvas > *:nth-child(7) { animation-delay: 0.35s; }
+  .canvas > *:nth-child(8) { animation-delay: 0.4s; }
+
+  /* GLOW */
+  .glow-cyan { box-shadow: 0 0 20px rgba(0,212,255,0.08); }
+  .glow-red { box-shadow: 0 0 20px rgba(255,68,51,0.08); }
+  .glow-green { box-shadow: 0 0 20px rgba(0,232,122,0.08); }
+</style>
+</head>
+<body>
+<div class="canvas">
+
+  <!-- MASTHEAD -->
+  <div class="masthead">
+    <div class="eyebrow">Sistema de Gestión de Eventos · Laravel</div>
+    <h1>Flujo de<br><em>Datos</em></h1>
+    <p class="subtitle">Representación de cómo viaja la información a través de las capas del sistema: desde la entrada del usuario hasta la persistencia, broadcasting y respuesta.</p>
+  </div>
+
+  <!-- 1. ENTRY LAYER -->
+  <div class="layer-label"><span></span> 01 — Capa de Entrada (Input Layer)</div>
+  <div style="margin-bottom:8px">
+    <div class="h-flow" style="margin-bottom:0">
+      <div class="h-node glow-cyan" style="border-color:rgba(0,212,255,0.25)">
+        <div class="h-node-icon">🌐</div>
+        <div class="h-node-title">HTTP Request</div>
+        <div class="h-node-sub">Participante / Admin / Proveedor externo</div>
+      </div>
+      <div class="h-arrow"><span>→</span></div>
+      <div class="h-node">
+        <div class="h-node-icon">🔒</div>
+        <div class="h-node-title">Middleware</div>
+        <div class="h-node-sub">Auth · RBAC · Rate Limit</div>
+      </div>
+      <div class="h-arrow"><span>→</span></div>
+      <div class="h-node">
+        <div class="h-node-icon">✅</div>
+        <div class="h-node-title">Form Request</div>
+        <div class="h-node-sub">Validación esquema · Tipos · Reglas</div>
+      </div>
+      <div class="h-arrow"><span>→</span></div>
+      <div class="h-node">
+        <div class="h-node-icon">🎮</div>
+        <div class="h-node-title">Controller</div>
+        <div class="h-node-sub">Orquesta la respuesta · Delegación</div>
+      </div>
+      <div class="h-arrow"><span>→</span></div>
+      <div class="h-node" style="border-color:rgba(168,85,247,0.3)">
+        <div class="h-node-icon">📦</div>
+        <div class="h-node-title">DTO</div>
+        <div class="h-node-sub">Datos tipados hacia Service Layer</div>
+      </div>
+    </div>
+  </div>
+  <div class="tl-connector" style="margin-bottom:40px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:3px;margin-left:calc(50% - 1px)">
+      <div style="width:1px;height:12px;background:var(--border)"></div>
+      <div style="font-size:14px;color:var(--muted)">↓</div>
+      <div style="width:1px;height:12px;background:var(--border)"></div>
+    </div>
+  </div>
+
+  <!-- 2. DUAL WORKFLOWS -->
+  <div class="layer-label"><span></span> 02 — Workflows Críticos</div>
+  <div class="dual-flow">
+
+    <!-- INSCRIPCIÓN -->
+    <div class="flow-col">
+      <div class="flow-col-header">
+        <span style="font-size:16px">📋</span>
+        Flujo de Inscripción
+        <span class="badge" style="background:rgba(255,68,51,0.12);color:var(--red);border:1px solid rgba(255,68,51,0.3)">TRANSACCIONAL</span>
+      </div>
+      <div class="mini-flow">
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(255,68,51,0.4);color:var(--red)">1</div>
+          <div class="mf-content" style="border-color:rgba(255,68,51,0.2)">
+            <div class="mf-title">RegistrationDTO recibido</div>
+            <div class="mf-desc">RegistrationService recibe datos validados y tipados del controller</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(255,68,51,0.4);color:var(--red)">2</div>
+          <div class="mf-content" style="border-color:rgba(255,68,51,0.2)">
+            <div class="mf-title">validateCapacity()</div>
+            <div class="mf-desc">Atomic Lock en Redis — bloqueo por categoría, previene race conditions</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(255,68,51,0.4);color:var(--red)">3</div>
+          <div class="mf-content" style="border-color:rgba(255,68,51,0.2)">
+            <div class="mf-title">DB::transaction()</div>
+            <div class="mf-desc">Reserva de plaza + procesamiento de pago con Laravel Cashier (Stripe)</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(255,68,51,0.4);color:var(--red)">4</div>
+          <div class="mf-content" style="border-color:rgba(255,68,51,0.2)">
+            <div class="mf-title">Persistencia en registrations</div>
+            <div class="mf-desc">Modelo Eloquent guarda estado de pago, dorsal asignado y FK a evento</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(255,68,51,0.4);color:var(--red)">5</div>
+          <div class="mf-content" style="border-color:rgba(255,68,51,0.2)">
+            <div class="mf-title">generateDigitalCredential()</div>
+            <div class="mf-desc">QR único generado · Lock liberado · Dispatch a Queue</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(255,68,51,0.4);color:var(--red)">6</div>
+          <div class="mf-content" style="border-color:rgba(255,68,51,0.2)">
+            <div class="mf-title">Laravel Notification → Queue</div>
+            <div class="mf-desc">Email con QR + factura enviados de forma asíncrona por worker</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- CRONOMETRAJE -->
+    <div class="flow-col">
+      <div class="flow-col-header">
+        <span style="font-size:16px">⚡</span>
+        Flujo de Resultados en Tiempo Real
+        <span class="badge" style="background:rgba(0,232,122,0.12);color:var(--green);border:1px solid rgba(0,232,122,0.3)">LIVE</span>
+      </div>
+      <div class="mini-flow">
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(0,232,122,0.4);color:var(--green)">1</div>
+          <div class="mf-content" style="border-color:rgba(0,232,122,0.2)">
+            <div class="mf-title">TimingProviderAdapter</div>
+            <div class="mf-desc">Marca recibida del proveedor externo vía interfaz estándar (ProviderInterface)</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(0,232,122,0.4);color:var(--green)">2</div>
+          <div class="mf-content" style="border-color:rgba(0,232,122,0.2)">
+            <div class="mf-title">ResultDTO → Service Layer</div>
+            <div class="mf-desc">updateLiveResults() procesa la marca con datos tipados y validados</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(0,232,122,0.4);color:var(--green)">3</div>
+          <div class="mf-content" style="border-color:rgba(0,232,122,0.2)">
+            <div class="mf-title">Persistencia en results</div>
+            <div class="mf-desc">time_mark, partials y ranking guardados vía Eloquent en tabla results</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(0,232,122,0.4);color:var(--green)">4</div>
+          <div class="mf-content" style="border-color:rgba(0,232,122,0.2)">
+            <div class="mf-title">Laravel Event Dispatched</div>
+            <div class="mf-desc">ResultUpdated event emitido — desacopla la lógica del broadcasting</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(0,232,122,0.4);color:var(--green)">5</div>
+          <div class="mf-content" style="border-color:rgba(0,232,122,0.2)">
+            <div class="mf-title">Broadcast via Pusher / Reverb</div>
+            <div class="mf-desc">WebSocket channel difunde la actualización en tiempo real al frontend</div>
+          </div>
+        </div>
+        <div style="height:10px;display:flex;justify-content:center"><div style="width:1px;background:var(--border)"></div></div>
+
+        <div class="mf-step">
+          <div class="mf-num" style="border-color:rgba(0,232,122,0.4);color:var(--green)">6</div>
+          <div class="mf-content" style="border-color:rgba(0,232,122,0.2)">
+            <div class="mf-title">React / Livewire → UI update</div>
+            <div class="mf-desc">Dashboard y pantalla de espectador actualizados sin recargar página</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 3. SERVICE LAYER -->
+  <div class="layer-label"><span></span> 03 — Service Layer & Persistencia</div>
+  <div class="full-layer glow-cyan" style="border-color:rgba(0,212,255,0.15); margin-bottom:8px">
+    <div style="position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--cyan);border-radius:10px 0 0 10px"></div>
+    <div class="full-layer-title"><span style="color:var(--cyan)">⬡</span> Service Layer — Lógica de Negocio Centralizada</div>
+    <div class="full-layer-grid">
+      <div class="mini-card" style="border-color:rgba(255,68,51,0.2)">
+        <div class="mini-card-title" style="color:var(--red)">RegistrationService</div>
+        <div class="mini-card-desc">processRegistration() · validateCapacity() · generateDigitalCredential()</div>
+      </div>
+      <div class="mini-card" style="border-color:rgba(255,170,0,0.2)">
+        <div class="mini-card-title" style="color:var(--amber)">LogisticsService</div>
+        <div class="mini-card-desc">integrateProvider() · assignResource() · ResourceDTO handling</div>
+      </div>
+      <div class="mini-card" style="border-color:rgba(0,232,122,0.2)">
+        <div class="mini-card-title" style="color:var(--green)">TimingService</div>
+        <div class="mini-card-desc">updateLiveResults() · calculateStatistics() · broadcast dispatch</div>
+      </div>
+      <div class="mini-card" style="border-color:rgba(168,85,247,0.2)">
+        <div class="mini-card-title" style="color:var(--purple)">MarketingService</div>
+        <div class="mini-card-desc">segmentParticipants() · triggerMarketingCampaign() · syncSocialMedia()</div>
+      </div>
+    </div>
+  </div>
+  <div style="display:flex;justify-content:center;height:36px;align-items:center;margin-bottom:8px">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div style="width:1px;height:10px;background:var(--border)"></div>
+      <div style="font-size:14px;color:var(--muted)">↓</div>
+      <div style="width:1px;height:10px;background:var(--border)"></div>
+    </div>
+  </div>
+
+  <!-- 4. DATABASE -->
+  <div class="layer-label"><span></span> 04 — Capa de Datos (Eloquent ORM)</div>
+  <div class="db-flow" style="margin-bottom:40px">
+    <div class="db-node" style="border-color:rgba(255,68,51,0.3)">
+      <div class="db-node-head"><div class="dot" style="background:var(--red)"></div>users</div>
+      <div class="db-node-body">
+        <div class="db-field"><span class="pk">PK</span> id</div>
+        <div class="db-field">name</div>
+        <div class="db-field">age</div>
+        <div class="db-field">origin</div>
+      </div>
+    </div>
+    <div class="db-node" style="border-color:rgba(255,170,0,0.3)">
+      <div class="db-node-head"><div class="dot" style="background:var(--amber)"></div>events</div>
+      <div class="db-node-body">
+        <div class="db-field"><span class="pk">PK</span> id</div>
+        <div class="db-field">name</div>
+        <div class="db-field">capacity</div>
+        <div class="db-field">categories</div>
+      </div>
+    </div>
+    <div class="db-node" style="border-color:rgba(0,232,122,0.3)">
+      <div class="db-node-head"><div class="dot" style="background:var(--green)"></div>registrations</div>
+      <div class="db-node-body">
+        <div class="db-field"><span class="pk">PK</span> id</div>
+        <div class="db-field"><span class="fk">FK</span> user_id</div>
+        <div class="db-field"><span class="fk">FK</span> event_id</div>
+        <div class="db-field">payment · dorsal</div>
+      </div>
+    </div>
+    <div class="db-node" style="border-color:rgba(0,212,255,0.3)">
+      <div class="db-node-head"><div class="dot" style="background:var(--cyan)"></div>results</div>
+      <div class="db-node-body">
+        <div class="db-field"><span class="pk">PK</span> id</div>
+        <div class="db-field"><span class="fk">FK</span> reg_id</div>
+        <div class="db-field">time_mark</div>
+        <div class="db-field">ranking</div>
+      </div>
+    </div>
+    <div class="db-node" style="border-color:rgba(168,85,247,0.3)">
+      <div class="db-node-head"><div class="dot" style="background:var(--purple)"></div>resources</div>
+      <div class="db-node-body">
+        <div class="db-field"><span class="pk">PK</span> id</div>
+        <div class="db-field"><span class="fk">FK</span> event_id</div>
+        <div class="db-field">type</div>
+        <div class="db-field">assigned_to</div>
+      </div>
+    </div>
+    <div class="db-node" style="border-color:rgba(255,110,180,0.3)">
+      <div class="db-node-head"><div class="dot" style="background:var(--pink)"></div>notifications</div>
+      <div class="db-node-body">
+        <div class="db-field"><span class="pk">PK</span> id</div>
+        <div class="db-field"><span class="fk">FK</span> user_id</div>
+        <div class="db-field">channel</div>
+        <div class="db-field">sent_at</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. ASYNC + BROADCAST -->
+  <div class="layer-label"><span></span> 05 — Salida: Broadcast, Queues & Notificaciones</div>
+  <div class="broadcast-diagram">
+
+    <div class="broadcast-list">
+      <div class="broadcast-item" style="border-color:rgba(255,68,51,0.2)">
+        <div class="icon">💳</div>
+        <div>
+          <div class="title">Laravel Cashier</div>
+          <div class="sub">Pago procesado → Stripe / Mollie</div>
+        </div>
+      </div>
+      <div class="broadcast-item" style="border-color:rgba(168,85,247,0.2)">
+        <div class="icon">⚙️</div>
+        <div>
+          <div class="title">Queue Worker</div>
+          <div class="sub">Campañas masivas · Reportes pesados</div>
+        </div>
+      </div>
+      <div class="broadcast-item" style="border-color:rgba(255,170,0,0.2)">
+        <div class="icon">📊</div>
+        <div>
+          <div class="title">Social Metrics Sync</div>
+          <div class="sub">APIs externas → social_metrics table</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="broadcast-center">
+      <div class="broadcast-hub">📡</div>
+      <div class="broadcast-label">Event Bus<br>Laravel Events</div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <div style="font-size:9px;padding:3px 8px;border-radius:4px;background:rgba(0,212,255,0.1);border:1px solid rgba(0,212,255,0.25);color:var(--cyan)">BROADCAST</div>
+        <div style="font-size:9px;padding:3px 8px;border-radius:4px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.25);color:var(--purple)">ASYNC</div>
+      </div>
+    </div>
+
+    <div class="broadcast-list">
+      <div class="broadcast-item" style="border-color:rgba(0,212,255,0.2)">
+        <div class="icon">⚡</div>
+        <div>
+          <div class="title">Pusher / Laravel Reverb</div>
+          <div class="sub">WebSocket → Dashboard live</div>
+        </div>
+      </div>
+      <div class="broadcast-item" style="border-color:rgba(0,232,122,0.2)">
+        <div class="icon">🔔</div>
+        <div>
+          <div class="title">Notifications Multi-canal</div>
+          <div class="sub">Mail · SMS · Database push</div>
+        </div>
+      </div>
+      <div class="broadcast-item" style="border-color:rgba(255,110,180,0.2)">
+        <div class="icon">📱</div>
+        <div>
+          <div class="title">React / Livewire</div>
+          <div class="sub">UI actualizada sin reload de página</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="footer-text">
+      Laravel Framework · MVC + SOLID · Eloquent ORM · Redis · WebSockets<br>
+      Flujo de Datos — Sistema Integral de Gestión de Eventos
+    </div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Inscripciones</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Cronometraje</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--cyan)"></div>Service Layer</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--purple)"></div>Marketing</div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
